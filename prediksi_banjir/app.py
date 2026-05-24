@@ -28,14 +28,7 @@ rainfall_bacem = {
 }
 
 KECAMATAN = {
-    "Sutojayan":  "35.05.12.1005",
-    "Blitar":     "35.05.07.1001",
-    "Kanigoro":   "35.05.09.2001",
-    "Ponggok":    "35.05.10.2001",
-    "Srengat":    "35.05.11.2001",
-    "Wlingi":     "35.05.14.2001",
-    "Kesamben":   "35.05.16.2001",
-    "Selopuro":   "35.05.17.2001",
+    "Sutojayan": "35.05.12.1005",
 }
 
 def estimate_rain(month, year):
@@ -291,12 +284,11 @@ def render_status_card(hasil):
 # ─────────────────────────────────────────
 def page_beranda():
     st.markdown('<div style="padding:1.5rem 2rem 0;">', unsafe_allow_html=True)
-    col_sel, col_btn, _ = st.columns([2.5, 1.2, 3])
-    with col_sel:
-        kec = st.selectbox("Kecamatan", list(KECAMATAN.keys()),
-                           index=list(KECAMATAN.keys()).index(st.session_state.kecamatan_sel),
-                           label_visibility="collapsed")
-        st.session_state.kecamatan_sel = kec
+    st.markdown('<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">'
+                '<div style="font-size:.85rem;color:#64748b;">📍</div>'
+                '<div style="font-size:.95rem;font-weight:700;color:#f1f5f9;">Kecamatan Sutojayan, Kabupaten Blitar</div>'
+                '</div>', unsafe_allow_html=True)
+    col_btn, _ = st.columns([1.2, 6])
     with col_btn:
         manual = st.button("🔄 Refresh")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -442,14 +434,44 @@ def page_tentang():
          '<div style="font-size:.78rem;color:#64748b;">Curah hujan &gt; 3 mm/3 jam — potensi banjir tinggi</div></div></div>'
          '</div></div>')
 
-    # Card 4 — Info Pembuat
+    # Card 4 — Profil Pembuat
     card('<div style="background:#111827;border:1px solid #1e2d45;border-radius:16px;padding:1.5rem;margin-bottom:1rem;">'
-         '<div style="font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.8rem;">Informasi Pembuat</div>'
-         '<div style="font-size:.84rem;color:#cbd5e1;line-height:1.8;">'
-         'Dibuat sebagai bagian dari penelitian skripsi di bidang prediksi banjir berbasis machine learning.<br>'
-         'Data cuaca bersumber dari <b style="color:#3b82f6;">API BMKG</b> (Badan Meteorologi, Klimatologi, dan Geofisika).<br>'
-         'Data curah hujan historis berasal dari Pos Sukorejo/Judeg dan Pos Gedok/Bacem, Kecamatan Sutojayan, Kabupaten Blitar.'
+         '<div style="font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:1rem;">Pembuat Aplikasi</div>'
+         '<div style="display:flex;align-items:center;gap:1.2rem;margin-bottom:1.2rem;">'
+         '<img src="https://photos.app.goo.gl/GDZyCPadZH9nGrmJ6" '
+         'onerror="this.style.display=\'none\'" '
+         'style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid #3b82f6;" />'
+         '<div>'
+         '<div style="font-size:1.1rem;font-weight:800;color:#f1f5f9;">Jonathan Setya Widayat</div>'
+         '<div style="font-size:.8rem;color:#64748b;margin-top:.2rem;">NIM: 22104410047</div>'
+         '</div></div>'
+         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem .8rem;">'
+         '<div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;">Jurusan</div>'
+         '<div style="font-size:.85rem;color:#cbd5e1;font-weight:500;margin-top:.15rem;">Teknik Informatika</div></div>'
+         '<div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;">Tahun Ajaran</div>'
+         '<div style="font-size:.85rem;color:#cbd5e1;font-weight:500;margin-top:.15rem;">2022</div></div>'
+         '<div style="grid-column:1/-1;">'
+         '<div style="font-size:.7rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;">Dosen Pembimbing</div>'
+         '<div style="font-size:.85rem;color:#cbd5e1;margin-top:.15rem;line-height:1.7;">'
+         '1. Saiful Nur Budiman, S.Kom., M.Kom<br>'
+         '2. Filda Febrinita, S.Pd., M.Pd'
+         '</div></div>'
          '</div></div>')
+
+    # Card 5 — Disclaimer
+    card('<div style="background:#0a0f1e;border:1px solid #1e2d45;border-radius:16px;padding:1.5rem;margin-bottom:1rem;">'
+         '<div style="display:flex;align-items:flex-start;gap:.8rem;">'
+         '<div style="font-size:1.3rem;flex-shrink:0;">📋</div>'
+         '<div>'
+         '<div style="font-size:.8rem;font-weight:700;color:#94a3b8;margin-bottom:.4rem;">Pernyataan Penggunaan</div>'
+         '<div style="font-size:.8rem;color:#64748b;line-height:1.8;">'
+         'Aplikasi ini dibuat semata-mata untuk kepentingan penelitian skripsi dan tidak digunakan '
+         'untuk tujuan komersial maupun monetisasi dalam bentuk apapun. Seluruh data, hasil prediksi, '
+         'dan informasi yang ditampilkan hanya diperuntukkan bagi keperluan akademis.'
+         '<br><br>'
+         'Sumber data: <b style="color:#3b82f6;">API BMKG</b> (Badan Meteorologi, Klimatologi, dan Geofisika) '
+         '&amp; data curah hujan historis Pos Sukorejo/Judeg dan Pos Gedok/Bacem, Kecamatan Sutojayan, Kabupaten Blitar.'
+         '</div></div></div></div>')
 
     st.markdown('</div>', unsafe_allow_html=True)
 
