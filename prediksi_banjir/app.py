@@ -465,14 +465,6 @@ def page_tentang():
         '</div>'
         '</div>'
 
-        '<div style="font-size:.84rem;color:#cbd5e1;line-height:1.8;">'
-        'Dibuat sebagai bagian dari penelitian skripsi di bidang prediksi banjir berbasis machine learning.<br>'
-        'Data cuaca bersumber dari <b style="color:#3b82f6;">API BMKG</b> '
-        '(Badan Meteorologi, Klimatologi, dan Geofisika).<br>'
-        'Data curah hujan historis berasal dari Pos Sukorejo/Judeg dan '
-        'Pos Gedok/Bacem, Kecamatan Sutojayan, Kabupaten Blitar.'
-        '</div>'
-
         '</div>'
         '</div>'
     )
