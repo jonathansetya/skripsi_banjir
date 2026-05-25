@@ -64,20 +64,37 @@ X_cnn = lstm_out.reshape((lstm_out.shape[0],1,1,1))
 # =========================
 y_cnn = []
 
-for i in range(len(X)):
-    rain = float(X[i][-1][-1])
+# gunakan data rain asli (BELUM scaling)
+rain_data = df["rain"].values
+
+# looping sesuai jumlah sequence
+for i in range(3, len(rain_data)):
+
+    rain = float(rain_data[i])
+
+    print(f"Rain Data Index {i}: {rain}")
 
     label = label_banjir(rain)
+
+    print(f"Label: {label}")
 
     y_cnn.append(label)
 
 y_cnn = np.array(y_cnn)
 
 print("\nShape Label Sebelum Encoding:", y_cnn.shape)
+print("Isi Label:", y_cnn)
 
+# cek distribusi label
+unique, counts = np.unique(y_cnn, return_counts=True)
+
+print("\nDistribusi Label:")
+print(dict(zip(unique, counts)))
+
+# one-hot encoding
 y_cnn = to_categorical(y_cnn, num_classes=3)
 
-print("Shape Label Sesudah Encoding:", y_cnn.shape)
+print("\nShape Label Sesudah Encoding:", y_cnn.shape)
 
 # =========================
 # CNN
@@ -115,3 +132,20 @@ elif status == 1:
 
 else:
     print("\nSTATUS BANJIR: BAHAYA 🔴")
+
+# =========================
+# PREDIKSI CLASS
+# =========================
+y_pred = np.argmax(pred, axis=1)
+
+# =========================
+# LABEL ASLI
+# =========================
+y_true = np.argmax(y_cnn, axis=1)
+
+# =========================
+# EVALUATION
+# =========================
+from evaluation import evaluate_model
+
+evaluate_model(y_true, y_pred)

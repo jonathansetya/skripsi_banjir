@@ -1,6 +1,5 @@
 import requests
 import pandas as pd
-
 from rainfall import estimate_rain
 from datetime import datetime
 
@@ -10,7 +9,6 @@ def fetch_bmkg():
 
     response = requests.get(url)
 
-    # cek status API
     print("Status API:", response.status_code)
 
     data = response.json()
@@ -23,10 +21,18 @@ def fetch_bmkg():
 
             dt = datetime.fromisoformat(cuaca["local_datetime"])
 
-            rain = estimate_rain(dt.month, dt.year)
+            # =========================
+            # AMBIL RAIN DARI BMKG
+            # =========================
+            rain = cuaca.get("tp", 0)
+
+            # kalau kosong/null → fallback rainfall.py
+            if rain is None:
+                rain = estimate_rain(dt.month, dt.year)
 
             records.append({
-                "datetime": cuaca["local_datetime"],
+
+                "datetime": dt,
                 "temp": cuaca["t"],
                 "humidity": cuaca["hu"],
                 "wind": cuaca["ws"],
@@ -35,5 +41,8 @@ def fetch_bmkg():
             })
 
     df = pd.DataFrame(records)
+
+    print("\n=== DATA BMKG ===")
+    print(df.head())
 
     return df

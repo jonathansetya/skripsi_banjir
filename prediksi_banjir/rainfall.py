@@ -16,7 +16,6 @@ rainfall_bacem = {
 
 def estimate_rain(month, year):
 
-    # kalau tahun tidak ada → pakai 2025
     if year not in rainfall_sukorejo:
         year = 2025
 
@@ -24,7 +23,5 @@ def estimate_rain(month, year):
     bacem = rainfall_bacem[year][month-1]
 
     avg_monthly = (sukorejo + bacem) / 2
-    daily = avg_monthly / 30
-    per_3_hour = daily / 8
 
-    return per_3_hour
+    return avg_monthly
