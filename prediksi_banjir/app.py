@@ -460,6 +460,7 @@ def page_tentang():
 
         '<div style="grid-column:1/-1;margin-top:.2rem;">'
         '<div style="font-size:.85rem;color:#cbd5e1;margin-top:.15rem;line-height:1.8;">'
+        '<strong>Dosen Pembimbing :</strong><br>'
         '1. Saiful Nur Budiman, S.Kom., M.Kom<br>'
         '2. Filda Febrinita, S.Pd., M.Pd'
         '</div>'
