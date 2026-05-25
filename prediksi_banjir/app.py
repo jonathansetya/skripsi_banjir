@@ -343,7 +343,7 @@ def page_beranda():
         df_show = df[['datetime','temp','humidity','wind','weather','rain']].head(5).copy()
         df_show.columns = ['Waktu','Suhu (°C)','Kelembaban (%)','Angin (km/h)','Cuaca','Curah Hujan (mm/3j)']
         df_show['Curah Hujan (mm/3j)'] = df_show['Curah Hujan (mm/3j)'].round(3)
-        st.dataframe(df_show, use_container_width=True, hide_index=True)
+        st.dataframe(df_show, width='stretch', hide_index=True)
 
         # Countdown realtime — diupdate tiap 1 detik via st_autorefresh
         if st.session_state.last_update:
@@ -395,10 +395,10 @@ def page_informasi():
         bulan = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"]
         with tab1:
             st.dataframe(pd.DataFrame(rainfall_sukorejo, index=bulan).T,
-                         use_container_width=True)
+                         width='stretch')
         with tab2:
             st.dataframe(pd.DataFrame(rainfall_bacem, index=bulan).T,
-                         use_container_width=True)
+                         width='stretch')
     else:
         st.info("Belum ada data. Buka tab **Beranda** untuk memuat prediksi terlebih dahulu.")
     st.markdown('</div>', unsafe_allow_html=True)
