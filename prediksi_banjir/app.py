@@ -387,7 +387,7 @@ def page_informasi():
         df_show = df[['datetime','temp','humidity','wind','weather','rain']].copy()
         df_show.columns = ['Waktu','Suhu (°C)','Kelembaban (%)','Angin (km/h)','Cuaca','Curah Hujan (mm/3j)']
         df_show['Curah Hujan (mm/3j)'] = df_show['Curah Hujan (mm/3j)'].round(4)
-        st.dataframe(df_show, use_container_width=True, hide_index=True, height=380)
+        st.dataframe(df_show, width='stretch', hide_index=True, height=380)
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### 🏞️ Data Curah Hujan Historis")
