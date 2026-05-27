@@ -1,14 +1,14 @@
 import requests
 import json
 
-ONESIGNAL_APP_ID = "1720c94d-33da-4109-9423-0af124b42a5e"
-REST_API_KEY = "os_v2_app_c4qmstjt3jaqtfbdblysjnbklyywkfrtbkwu6vebriplfrdl2ybz3tql75alurpdxpv5oyx53qwdxuqkli2cfuw2fmevnfclzvjdxra"
+ONESIGNAL_APP_ID = "APP_ID"
+REST_API_KEY = "REST_API_KEY"
 
 def send_notification(title, message):
 
     headers = {
         "Content-Type": "application/json; charset=utf-8",
-        "Authorization": f"Basic {REST_API_KEY}"
+        "Authorization": f"Key {REST_API_KEY}"
     }
 
     payload = {
@@ -35,3 +35,8 @@ def send_notification(title, message):
 
     print("Status:", response.status_code)
     print(response.text)
+
+    if response.status_code == 200:
+        return True
+    else:
+        return False

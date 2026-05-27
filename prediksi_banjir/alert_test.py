@@ -27,12 +27,15 @@ elif pilih == "2":
 
 elif pilih == "3":
 
-    send_notification(
+    success = send_notification(
         "🆘 STATUS KRITIS",
         "Potensi banjir dalam 1 jam. Segera lakukan evakuasi."
     )
 
-    print("Notifikasi KRITIS berhasil dikirim")
+    if success:
+        print("Notifikasi KRITIS berhasil dikirim")
+    else:
+        print("Notifikasi gagal dikirim")
 
 else:
     print("Pilihan tidak valid")
