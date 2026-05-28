@@ -10,6 +10,7 @@ import time
 import os
 import json
 from streamlit_autorefresh import st_autorefresh
+from notification import send_notification
 
 # ─────────────────────────────────────────
 #  PERSISTENT TIMESTAMP (tahan reboot)
@@ -220,7 +221,12 @@ h1,h2,h3,h4    { font-family:var(--font) !important; color:var(--text) !importan
 # ─────────────────────────────────────────
 #  SESSION STATE
 # ─────────────────────────────────────────
-for k,v in [("hasil",None),("df_bmkg",None),("kecamatan_sel","Sutojayan")]:
+for k,v in [
+    ("hasil",None),
+    ("df_bmkg",None),
+    ("kecamatan_sel","Sutojayan"),
+    ("last_notification", None)
+]:
     if k not in st.session_state:
         st.session_state[k] = v
 
@@ -238,11 +244,55 @@ def do_predict(kec):
     adm4 = KECAMATAN.get(kec, "35.05.12.1005")
     df   = fetch_bmkg(adm4)
     hasil, df = run_model(df)
+
+    check_and_send_notification(hasil)
     ts = time.time()
     st.session_state.hasil       = hasil
     st.session_state.df_bmkg     = df
     st.session_state.last_update = ts
     save_last_update(ts)  # simpan persisten ke file
+
+# ─────────────────────────────────────────
+#  NOTIFICATION SYSTEM
+# ─────────────────────────────────────────
+def check_and_send_notification(hasil):
+
+    status_idx = int(np.argmax(hasil))
+
+    current_status = ["AMAN", "WASPADA", "BAHAYA"][status_idx]
+
+    # ambil notif terakhir
+    last_status = st.session_state.last_notification
+
+    # kalau status sama → jangan kirim lagi
+    if current_status == last_status:
+        return
+
+    # =========================
+    # WASPADA = ORANYE (24 jam)
+    # =========================
+    if current_status == "WASPADA":
+
+        success = send_notification(
+            "⚠️ KODE ORANYE",
+            "Potensi banjir dalam 24 jam. Harap meningkatkan kewaspadaan."
+        )
+
+        if success:
+            st.session_state.last_notification = current_status
+
+    # =========================
+    # BAHAYA = MERAH (2 jam)
+    # =========================
+    elif current_status == "BAHAYA":
+
+        success = send_notification(
+            "🚨 KODE MERAH",
+            "Potensi banjir dalam 2 jam. Segera lakukan persiapan darurat."
+        )
+
+        if success:
+            st.session_state.last_notification = current_status
 
 # ─────────────────────────────────────────
 #  UI HELPERS

@@ -8,7 +8,7 @@ def send_notification(title, message):
 
     headers = {
         "Content-Type": "application/json; charset=utf-8",
-        "Authorization": f"Key {REST_API_KEY}"
+        "Authorization": f"Basic {REST_API_KEY}"
     }
 
     payload = {
