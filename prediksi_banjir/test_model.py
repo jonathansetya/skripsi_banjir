@@ -26,10 +26,12 @@ from utils import label_banjir
 # =========================
 # AMBIL DATA BMKG
 # =========================
+# Data langsung diambil, teks 'Status API: 200' dan tabel
+# akan otomatis dicetak 1 kali oleh fungsi ini di awal.
 df = fetch_bmkg()
 
-print("\n=== DATA BMKG ===")
-print(df.head())
+# Catatan: Baris print(df.head()) di sini sudah dihapus
+# agar tidak terjadi duplikasi cetak di terminal.
 
 # =========================
 # PREPROCESSING
