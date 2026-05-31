@@ -488,22 +488,27 @@ def page_tentang():
          '</div></div>')
 
     # Card 3 — Kategori Status
-    card('<div style="background:#111827;border:1px solid #1e2d45;border-radius:16px;padding:1.5rem;margin-bottom:1rem;">'
-         '<div style="font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.8rem;">Kategori Status Banjir</div>'
-         '<div style="display:flex;flex-direction:column;gap:.6rem;">'
-         '<div style="display:flex;align-items:center;gap:.8rem;background:#10b98112;border:1px solid #10b98133;border-radius:10px;padding:.8rem 1rem;">'
-         '<span style="font-size:1.2rem;">🟢</span>'
-         '<div><div style="font-size:.85rem;font-weight:700;color:#10b981;">AMAN</div>'
-         '<div style="font-size:.78rem;color:#64748b;">Curah hujan ≤ 1 mm/3 jam — risiko banjir rendah</div></div></div>'
-         '<div style="display:flex;align-items:center;gap:.8rem;background:#f59e0b12;border:1px solid #f59e0b33;border-radius:10px;padding:.8rem 1rem;">'
-         '<span style="font-size:1.2rem;">🟡</span>'
-         '<div><div style="font-size:.85rem;font-weight:700;color:#f59e0b;">WASPADA</div>'
-         '<div style="font-size:.78rem;color:#64748b;">Curah hujan 1–3 mm/3 jam — perlu persiapan antisipasi</div></div></div>'
-         '<div style="display:flex;align-items:center;gap:.8rem;background:#ef444412;border:1px solid #ef444433;border-radius:10px;padding:.8rem 1rem;">'
-         '<span style="font-size:1.2rem;">🔴</span>'
-         '<div><div style="font-size:.85rem;font-weight:700;color:#ef4444;">BAHAYA</div>'
-         '<div style="font-size:.78rem;color:#64748b;">Curah hujan &gt; 3 mm/3 jam — potensi banjir tinggi</div></div></div>'
-         '</div></div>')
+    card(
+        '<div style="background:#111827;border:1px solid #1e2d45;border-radius:16px;padding:1.5rem;margin-bottom:1rem;">'
+        '<div style="font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.8rem;">Kategori Status Banjir</div>'
+        '<div style="display:flex;flex-direction:column;gap:.6rem;">'
+
+        '<div style="display:flex;align-items:center;gap:.8rem;background:#10b98112;border:1px solid #10b98133;border-radius:10px;padding:.8rem 1rem;">'
+        '<span style="font-size:1.2rem;">🟢</span>'
+        '<div><div style="font-size:.85rem;font-weight:700;color:#10b981;">AMAN</div>'
+        '<div style="font-size:.78rem;color:#64748b;">Curah hujan &lt; 30 mm/hari — risiko banjir rendah</div></div></div>'
+
+        '<div style="display:flex;align-items:center;gap:.8rem;background:#f59e0b12;border:1px solid #f59e0b33;border-radius:10px;padding:.8rem 1rem;">'
+        '<span style="font-size:1.2rem;">🟡</span>'
+        '<div><div style="font-size:.85rem;font-weight:700;color:#f59e0b;">WASPADA</div>'
+        '<div style="font-size:.78rem;color:#64748b;">Curah hujan 30–70 mm/hari — perlu persiapan antisipasi</div></div></div>'
+
+        '<div style="display:flex;align-items:center;gap:.8rem;background:#ef444412;border:1px solid #ef444433;border-radius:10px;padding:.8rem 1rem;">'
+        '<span style="font-size:1.2rem;">🔴</span>'
+        '<div><div style="font-size:.85rem;font-weight:700;color:#ef4444;">BAHAYA</div>'
+        '<div style="font-size:.78rem;color:#64748b;">Curah hujan &gt; 70 mm/hari — potensi banjir tinggi</div></div></div>'
+
+        '</div></div>')
 
     # Card 4 — Profil Pembuat
     card(
