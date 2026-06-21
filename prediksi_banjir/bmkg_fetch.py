@@ -42,7 +42,4 @@ def fetch_bmkg():
 
     df = pd.DataFrame(records)
 
-    print("\n=== DATA BMKG ===")
-    print(df.head())
-
     return df

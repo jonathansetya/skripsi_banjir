@@ -42,6 +42,9 @@ from utils import label_banjir
 # =========================
 df = fetch_bmkg()
 
+print("\n=== DATA BMKG ===")
+print(df.to_string())
+
 # =========================
 # PREPROCESSING
 # =========================
