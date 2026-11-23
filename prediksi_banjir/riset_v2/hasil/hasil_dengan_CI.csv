@@ -1,0 +1,6 @@
+model,ROC_AUC,ROC_AUC_CI95,PR_AUC,PR_AUC_CI95,PR_AUC_acak(prevalensi)
+Curah hujan dasarian (aturan BMKG),0.807,0.64-0.90,0.274,0.04-0.52,0.033
+Regresi logistik,0.734,0.54-0.87,0.09,0.03-0.27,0.033
+Random forest,0.61,0.40-0.75,0.084,0.02-0.28,0.033
+Hybrid LSTM-CNN,0.722,0.52-0.87,0.157,0.03-0.40,0.033
+Hybrid CNN-LSTM (varian),0.752,0.59-0.88,0.078,0.03-0.22,0.033

@@ -3,19 +3,19 @@ import requests
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.neural_network import MLPRegressor
-from sklearn.ensemble import RandomForestClassifier
 import time
 import os
 import json
 from streamlit_autorefresh import st_autorefresh
 from notification import send_notification
+from risk_engine import (assess_forecast, next_state, build_message, load_state, save_state,
+                         classify_dasarian_total, AMBANG_BAHAYA_DASARIAN_MM, AMBANG_WASPADA_DASARIAN_MM)
 
 # ─────────────────────────────────────────
 #  PERSISTENT TIMESTAMP (tahan reboot)
 # ─────────────────────────────────────────
 TIMESTAMP_FILE = "/tmp/banjir_last_update.json"
+NOTIF_STATE_FILE = "/tmp/banjir_last_notified.json"
 
 def load_last_update():
     """Baca timestamp dari file — persist lintas session/reboot."""
@@ -56,18 +56,6 @@ KECAMATAN = {
     "Sutojayan": "35.05.12.1005",
 }
 
-def estimate_rain(month, year):
-    if year not in rainfall_sukorejo:
-        year = 2025
-    s = rainfall_sukorejo[year][month-1]
-    b = rainfall_bacem[year][month-1]
-    return ((s+b)/2) / 30 / 8
-
-def label_banjir(rain):
-    if rain <= 1:   return 0
-    elif rain <= 3: return 1
-    else:           return 2
-
 # ─────────────────────────────────────────
 #  FETCH BMKG
 # ─────────────────────────────────────────
@@ -85,60 +73,15 @@ def fetch_bmkg(adm4):
                 "humidity": c["hu"],
                 "wind":     c["ws"],
                 "weather":  c["weather_desc"],
-                "rain":     estimate_rain(dt.month, dt.year),
+                "rain":     float(c.get("tp", 0) or 0),   # mm per langkah 3-jaman (field tp BMKG)
             })
     return pd.DataFrame(records)
 
 # ─────────────────────────────────────────
-#  MODEL (sklearn — ringan, tanpa TF)
+#  PENILAIAN RISIKO (aturan ambang; lihat risk_engine.py)
 # ─────────────────────────────────────────
 def run_model(df):
-    df2 = df.copy()
-    df2['weather'] = df2['weather'].astype('category').cat.codes
-    features = df2[['temp','humidity','wind','weather','rain']].values
-    scaler = MinMaxScaler()
-    scaled = scaler.fit_transform(features)
-
-    # Sequence window=3
-    window = 3
-    X, y = [], []
-    for i in range(len(scaled) - window):
-        X.append(scaled[i:i+window].flatten())   # (15,)
-        y.append(scaled[i+window][1])             # humidity target
-    X, y = np.array(X), np.array(y)
-
-    # "LSTM" digantikan MLPRegressor (feature extractor)
-    regressor = MLPRegressor(hidden_layer_sizes=(64, 32), max_iter=200, random_state=42)
-    regressor.fit(X, y)
-    lstm_out = regressor.predict(X).reshape(-1, 1)  # (n, 1)
-
-    # Label banjir dari nilai rain asli (bukan dari regressor output)
-    rain_vals = df2['rain'].values[window:]
-    y_clf = np.array([label_banjir(float(v)) for v in rain_vals])
-
-    # Pastikan ada minimal 3 kelas agar predict_proba punya 3 kolom
-    # Jika data hanya punya 1-2 kelas, tambahkan dummy row kecil
-    unique = np.unique(y_clf)
-    if len(unique) < 3:
-        missing = [c for c in [0, 1, 2] if c not in unique]
-        X_extra  = np.zeros((len(missing), X.shape[1]))
-        lo_extra = np.array(missing)
-        X_aug    = np.vstack([X, X_extra])
-        y_aug    = np.concatenate([y_clf, lo_extra])
-    else:
-        X_aug, y_aug = X, y_clf
-
-    # "CNN" → RandomForestClassifier (stabil, tidak error shape)
-    classifier = RandomForestClassifier(n_estimators=50, random_state=42)
-    classifier.fit(X_aug, y_aug)
-
-    pred_proba = classifier.predict_proba(X[-1].reshape(1, -1))[0]
-    # Urutkan sesuai kelas 0,1,2
-    full_proba = np.zeros(3)
-    for i, cls in enumerate(classifier.classes_):
-        full_proba[int(cls)] = pred_proba[i]
-
-    return full_proba, df
+    return assess_forecast(df['rain'].tolist()), df
 
 # ─────────────────────────────────────────
 #  STREAMLIT CONFIG
@@ -225,7 +168,7 @@ for k,v in [
     ("hasil",None),
     ("df_bmkg",None),
     ("kecamatan_sel","Sutojayan"),
-    ("last_notification", None)
+    ("last_notification", load_state(NOTIF_STATE_FILE))
 ]:
     if k not in st.session_state:
         st.session_state[k] = v
@@ -256,53 +199,23 @@ def do_predict(kec):
 #  NOTIFICATION SYSTEM
 # ─────────────────────────────────────────
 def check_and_send_notification(hasil):
-
-    status_idx = int(np.argmax(hasil))
-
-    current_status = ["AMAN", "WASPADA", "BAHAYA"][status_idx]
-
-    # ambil notif terakhir
-    last_status = st.session_state.last_notification
-
-    # kalau status sama → jangan kirim lagi
-    if current_status == last_status:
-        return
-
-    # =========================
-    # WASPADA = ORANYE (24 jam)
-    # =========================
-    if current_status == "WASPADA":
-
-        success = send_notification(
-            "⚠️ KODE ORANYE",
-            "Potensi banjir dalam 24 jam. Harap meningkatkan kewaspadaan."
-        )
-
-        if success:
-            st.session_state.last_notification = current_status
-
-    # =========================
-    # BAHAYA = MERAH (2 jam)
-    # =========================
-    elif current_status == "BAHAYA":
-
-        success = send_notification(
-            "🚨 KODE MERAH",
-            "Potensi banjir dalam 2 jam. Segera lakukan persiapan darurat."
-        )
-
-        if success:
-            st.session_state.last_notification = current_status
+    """Kirim notifikasi hanya saat status NAIK. Status terakhir disimpan di file agar tahan restart dan antar-sesi."""
+    kirim, status_baru = next_state(load_state(NOTIF_STATE_FILE), hasil.status)
+    if kirim:
+        judul, isi = build_message(hasil)
+        if send_notification(judul, isi):
+            save_state(NOTIF_STATE_FILE, status_baru)
+            st.session_state.last_notification = status_baru
+    else:
+        save_state(NOTIF_STATE_FILE, status_baru)
 
 # ─────────────────────────────────────────
 #  UI HELPERS
 # ─────────────────────────────────────────
 def status_info(hasil):
-    idx    = int(np.argmax(hasil))
-    labels = ["AMAN","WASPADA","BAHAYA"]
-    colors = ["#10b981","#f59e0b","#ef4444"]
-    icons  = ["🟢","🟡","🔴"]
-    return labels[idx], colors[idx], icons[idx], hasil[0]*100, hasil[1]*100, hasil[2]*100
+    colors = ["#10b981", "#f59e0b", "#ef4444"]
+    icons  = ["🟢", "🟡", "🔴"]
+    return hasil.status, colors[hasil.status_idx], icons[hasil.status_idx]
 
 def render_header():
     st.markdown("""
@@ -320,7 +233,7 @@ def render_header():
     """, unsafe_allow_html=True)
 
 def render_status_card(hasil):
-    label,color,icon,p_aman,p_waspada,p_bahaya = status_info(hasil)
+    label, color, icon = status_info(hasil)
     now = datetime.fromtimestamp(st.session_state.last_update).strftime("%d %b %Y, %H:%M") \
           if st.session_state.last_update else "—"
     st.markdown(f"""
@@ -340,22 +253,22 @@ def render_status_card(hasil):
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.8rem;margin-bottom:1.2rem;">
             <div style="background:#0a0f1e66;border:1px solid #1e2d45;border-radius:12px;
                         padding:.8rem;text-align:center;">
-                <div style="font-size:1.4rem;font-weight:700;color:#10b981;">{p_aman:.1f}%</div>
-                <div style="font-size:.72rem;color:#64748b;margin-top:.2rem;">🟢 Aman</div>
+                <div style="font-size:1.4rem;font-weight:700;color:#3b82f6;">{hasil.total_mm:.0f} mm</div>
+                <div style="font-size:.72rem;color:#64748b;margin-top:.2rem;">Akumulasi prakiraan</div>
             </div>
             <div style="background:#0a0f1e66;border:1px solid #1e2d45;border-radius:12px;
                         padding:.8rem;text-align:center;">
-                <div style="font-size:1.4rem;font-weight:700;color:#f59e0b;">{p_waspada:.1f}%</div>
-                <div style="font-size:.72rem;color:#64748b;margin-top:.2rem;">🟡 Waspada</div>
+                <div style="font-size:1.4rem;font-weight:700;color:#f59e0b;">{hasil.intensitas_mm_hari:.1f} mm/hari</div>
+                <div style="font-size:.72rem;color:#64748b;margin-top:.2rem;">Rata-rata intensitas</div>
             </div>
             <div style="background:#0a0f1e66;border:1px solid #1e2d45;border-radius:12px;
                         padding:.8rem;text-align:center;">
-                <div style="font-size:1.4rem;font-weight:700;color:#ef4444;">{p_bahaya:.1f}%</div>
-                <div style="font-size:.72rem;color:#64748b;margin-top:.2rem;">🔴 Bahaya</div>
+                <div style="font-size:1.4rem;font-weight:700;color:#10b981;">{hasil.jam_cakupan} jam</div>
+                <div style="font-size:.72rem;color:#64748b;margin-top:.2rem;">Cakupan prakiraan</div>
             </div>
         </div>
         <div style="font-size:.73rem;color:#64748b;">
-            🕐 Diperbarui: {now} &nbsp;·&nbsp; Auto-refresh setiap 60 menit</div>
+            🕐 Diperbarui: {now} &nbsp;·&nbsp; Auto-refresh setiap 60 menit<br>Prototipe penelitian, belum divalidasi untuk penggunaan operasional. Bukan peringatan resmi BMKG/BPBD.</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -453,6 +366,63 @@ def page_informasi():
         st.info("Belum ada data. Buka tab **Beranda** untuk memuat prediksi terlebih dahulu.")
     st.markdown('</div>', unsafe_allow_html=True)
 
+# ─────────────────────────────────────────
+#  TAB UJI ULANG HISTORIS (hasil penelitian)
+# ─────────────────────────────────────────
+REPLAY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "replay_dasarian.csv")
+
+@st.cache_data
+def load_replay():
+    try:
+        return pd.read_csv(REPLAY_FILE, parse_dates=["mulai"])
+    except Exception:
+        return None
+
+def _fmt_prob(row, kolom):
+    if kolom not in row.index or pd.isna(row[kolom]):
+        return "-"
+    p = float(row[kolom])
+    return f"{p*100:.0f}% ({'Banjir' if p >= 0.5 else 'Tidak'})"
+
+def page_replay():
+    st.markdown('<div style="padding:1.5rem 2rem;">', unsafe_allow_html=True)
+    st.markdown("### 🕰️ Uji Ulang Kejadian Banjir Historis")
+    st.caption("Menampilkan hasil penelitian pada dasarian (10 harian) yang pernah tercatat banjir di SmartPB BPBD Jatim. "
+               "Curah hujan dari CHIRPS. Probabilitas model hybrid LSTM-CNN dan CNN-LSTM berasal dari validasi leave-one-year-out, "
+               "artinya tahun yang ditampilkan tidak ikut dipakai melatih model yang memprediksinya.")
+    df = load_replay()
+    if df is None:
+        st.info("File data/replay_dasarian.csv belum ada. Buat dengan 05_ekspor_replay.py di folder riset_v2, lalu salin ke folder data aplikasi.")
+        st.markdown('</div>', unsafe_allow_html=True)
+        return
+    df = df.copy()
+    df["Status aturan"] = df["total_mm"].apply(classify_dasarian_total)
+    kej = df[df["banjir"] == 1].sort_values("mulai")
+    if kej.empty:
+        st.warning("Tidak ada dasarian banjir di file replay.")
+        st.markdown('</div>', unsafe_allow_html=True)
+        return
+    opsi = {f"{r.mulai:%d %b %Y} (dasarian mulai)": i for i, r in kej.iterrows()}
+    pilih = st.selectbox("Pilih kejadian banjir", list(opsi.keys()), key="replay_pilih")
+    r = df.loc[opsi[pilih]]
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Hujan dasarian (CHIRPS)", f"{r['total_mm']:.0f} mm")
+    c2.metric("Status aturan BMKG", r["Status aturan"])
+    c3.metric("Hybrid LSTM-CNN", _fmt_prob(r, "p_lstm_cnn"))
+    c4.metric("Hybrid CNN-LSTM", _fmt_prob(r, "p_cnn_lstm"))
+    st.caption("Kenyataan: banjir tercatat pada dasarian ini. Status aturan: AMAN < 102 mm, WASPADA 102 sampai < 150 mm, BAHAYA ≥ 150 mm per dasarian.")
+    thn = df[df["tahun"] == r["tahun"]].set_index("mulai")
+    grafik = pd.DataFrame({"Hujan dasarian (mm)": thn["total_mm"],
+                           "Ambang BMKG 150 mm": AMBANG_BAHAYA_DASARIAN_MM,
+                           "Ambang waspada 102 mm": AMBANG_WASPADA_DASARIAN_MM})
+    st.line_chart(grafik)
+    st.markdown("**Ringkasan semua kejadian banjir**")
+    tab = kej[["mulai", "total_mm", "Status aturan"] + [c for c in ["p_lstm_cnn", "p_cnn_lstm"] if c in kej.columns]].copy()
+    tab["mulai"] = tab["mulai"].dt.strftime("%Y-%m-%d")
+    tab = tab.rename(columns={"mulai": "Dasarian mulai", "total_mm": "Hujan (mm)", "p_lstm_cnn": "P(banjir) LSTM-CNN", "p_cnn_lstm": "P(banjir) CNN-LSTM"})
+    st.dataframe(tab.round(2), width='stretch', hide_index=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
 def card(html):
     st.markdown(html, unsafe_allow_html=True)
 
@@ -465,8 +435,8 @@ def page_tentang():
          '<div style="font-size:2.5rem;margin-bottom:1rem;">🌊</div>'
          '<div style="font-size:1.4rem;font-weight:800;color:#f1f5f9;margin-bottom:.5rem;">Sistem Prediksi Dini Banjir</div>'
          '<div style="font-size:.85rem;color:#94a3b8;line-height:1.7;">'
-         'Sistem ini menggunakan model Hybrid <b style="color:#3b82f6;">LSTM-CNN</b> '
-         'untuk memprediksi potensi banjir di Kabupaten Blitar berdasarkan data cuaca real-time dari API BMKG.'
+         'Prototipe ini menampilkan status potensi hujan lebat di Kecamatan Sutojayan berdasarkan <b style="color:#3b82f6;">prakiraan hujan BMKG</b> '
+         'dan ambang curah hujan BMKG. Ini bukan peringatan resmi.'
          '</div></div>')
 
     # Card 2 — Cara Kerja
@@ -478,13 +448,13 @@ def page_tentang():
          '<div style="font-size:.84rem;color:#cbd5e1;">Data cuaca diambil dari API BMKG setiap 60 menit secara otomatis</div></div>'
          '<div style="display:flex;align-items:flex-start;gap:.8rem;">'
          '<div style="background:#3b82f622;color:#3b82f6;border-radius:8px;padding:.3rem .6rem;font-size:.75rem;font-weight:700;flex-shrink:0;">02</div>'
-         '<div style="font-size:.84rem;color:#cbd5e1;">Data dinormalisasi dan dibentuk menjadi sequence 3 timestep (9 jam)</div></div>'
+         '<div style="font-size:.84rem;color:#cbd5e1;">Akumulasi hujan prakiraan (field tp) dijumlahkan untuk seluruh cakupan prakiraan</div></div>'
          '<div style="display:flex;align-items:flex-start;gap:.8rem;">'
          '<div style="background:#3b82f622;color:#3b82f6;border-radius:8px;padding:.3rem .6rem;font-size:.75rem;font-weight:700;flex-shrink:0;">03</div>'
-         '<div style="font-size:.84rem;color:#cbd5e1;">Model LSTM mengekstrak pola temporal dari data cuaca</div></div>'
+         '<div style="font-size:.84rem;color:#cbd5e1;">Akumulasi dikonversi menjadi intensitas rata-rata (mm/hari)</div></div>'
          '<div style="display:flex;align-items:flex-start;gap:.8rem;">'
          '<div style="background:#3b82f622;color:#3b82f6;border-radius:8px;padding:.3rem .6rem;font-size:.75rem;font-weight:700;flex-shrink:0;">04</div>'
-         '<div style="font-size:.84rem;color:#cbd5e1;">Model CNN mengklasifikasikan ke 3 status: Aman, Waspada, Bahaya</div></div>'
+         '<div style="font-size:.84rem;color:#cbd5e1;">Intensitas dibandingkan dengan ambang untuk menentukan status: Aman, Waspada, Bahaya. Model hybrid LSTM-CNN hasil penelitian ditampilkan di tab Uji Ulang Historis</div></div>'
          '</div></div>')
 
     # Card 3 — Kategori Status
@@ -496,17 +466,17 @@ def page_tentang():
         '<div style="display:flex;align-items:center;gap:.8rem;background:#10b98112;border:1px solid #10b98133;border-radius:10px;padding:.8rem 1rem;">'
         '<span style="font-size:1.2rem;">🟢</span>'
         '<div><div style="font-size:.85rem;font-weight:700;color:#10b981;">AMAN</div>'
-        '<div style="font-size:.78rem;color:#64748b;">Curah hujan &lt; 30 mm/hari — risiko banjir rendah</div></div></div>'
+        '<div style="font-size:.78rem;color:#64748b;">Intensitas prakiraan &lt; 10,2 mm/hari</div></div></div>'
 
         '<div style="display:flex;align-items:center;gap:.8rem;background:#f59e0b12;border:1px solid #f59e0b33;border-radius:10px;padding:.8rem 1rem;">'
         '<span style="font-size:1.2rem;">🟡</span>'
         '<div><div style="font-size:.85rem;font-weight:700;color:#f59e0b;">WASPADA</div>'
-        '<div style="font-size:.78rem;color:#64748b;">Curah hujan 30–70 mm/hari — perlu persiapan antisipasi</div></div></div>'
+        '<div style="font-size:.78rem;color:#64748b;">Intensitas 10,2–15 mm/hari (setara kuartil atas hujan dasarian) — perlu waspada</div></div></div>'
 
         '<div style="display:flex;align-items:center;gap:.8rem;background:#ef444412;border:1px solid #ef444433;border-radius:10px;padding:.8rem 1rem;">'
         '<span style="font-size:1.2rem;">🔴</span>'
         '<div><div style="font-size:.85rem;font-weight:700;color:#ef4444;">BAHAYA</div>'
-        '<div style="font-size:.78rem;color:#64748b;">Curah hujan &gt; 70 mm/hari — potensi banjir tinggi</div></div></div>'
+        '<div style="font-size:.78rem;color:#64748b;">Intensitas ≥ 15 mm/hari (setara 150 mm/dasarian, ambang BMKG) — potensi banjir meningkat</div></div></div>'
 
         '</div></div>')
 
@@ -565,14 +535,16 @@ render_header()
 # max 99999 supaya tidak berhenti, interval=1000ms
 st_autorefresh(interval=1000, limit=99999, key="countdown_refresh")
 
-tab_beranda, tab_info, tab_tentang = st.tabs([
+tab_beranda, tab_info, tab_replay, tab_tentang = st.tabs([
     "🏠  Beranda",
     "📊  Informasi & Statistik",
+    "🕰️  Uji Ulang Historis",
     "ℹ️  Tentang Kami"
 ])
 
 with tab_beranda:  page_beranda()
 with tab_info:     page_informasi()
+with tab_replay:   page_replay()
 with tab_tentang:  page_tentang()
 
 # ── Trigger prediksi otomatis tiap 60 menit berdasarkan server time ──

@@ -1,0 +1,3 @@
+stasiun,n_bulan,korelasi,RMSE_mm,bias_mm
+Judeg,60,0.695,128.3,50.0
+Bacem,60,0.739,114.1,32.1

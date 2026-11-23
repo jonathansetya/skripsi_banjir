@@ -1,0 +1,4 @@
+model,TP,FP,FN,TN,precision,recall,F1,PR_AUC,ROC_AUC
+Aturan BMKG >=150 mm/dasarian,4,29,8,325,0.121,0.333,0.178,0.274,0.807
+Regresi logistik (class_weight),8,96,4,258,0.077,0.667,0.138,0.09,0.734
+Random forest (class_weight),1,1,11,353,0.5,0.083,0.143,0.084,0.61
