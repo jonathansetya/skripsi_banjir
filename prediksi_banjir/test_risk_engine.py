@@ -56,3 +56,9 @@ def test_klasifikasi_total_dasarian():
     assert classify_dasarian_total(102.0) == "WASPADA"
     assert classify_dasarian_total(149.9) == "WASPADA"
     assert classify_dasarian_total(150.0) == "BAHAYA"
+
+def test_mode_simulasi_diberi_label():
+    a = assess_forecast(lagi(60.0)); a.simulasi = True
+    judul, _ = build_message(a)
+    assert judul.startswith("[SIMULASI UJI]")
+    assert not build_message(assess_forecast(lagi(60.0)))[0].startswith("[SIMULASI")

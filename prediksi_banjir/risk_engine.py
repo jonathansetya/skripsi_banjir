@@ -33,6 +33,7 @@ class Assessment:
     jam_cakupan: int
     intensitas_mm_hari: float
     n_record: int
+    simulasi: bool = False   # True bila data hujan diganti nilai uji (hanya untuk pengujian)
 
 
 def _bersih(x):
@@ -88,6 +89,8 @@ def build_message(a):
         judul = "⚠️ STATUS WASPADA"
     else:
         judul = "ℹ️ STATUS AMAN"
+    if getattr(a, "simulasi", False):
+        judul = "[SIMULASI UJI] " + judul
     isi = (f"Prakiraan hujan {a.total_mm:.0f} mm dalam {a.jam_cakupan} jam ke depan "
            f"(rata-rata {a.intensitas_mm_hari:.1f} mm/hari). "
            "Prototipe penelitian, bukan peringatan resmi BMKG/BPBD.")

@@ -3,13 +3,15 @@ import requests
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import time
 import os
 import json
 from streamlit_autorefresh import st_autorefresh
-from notification import send_notification
+from notification import send_notification, SEGMENT
 from risk_engine import (assess_forecast, next_state, build_message, load_state, save_state,
-                         classify_dasarian_total, AMBANG_BAHAYA_DASARIAN_MM, AMBANG_WASPADA_DASARIAN_MM)
+                         classify_dasarian_total, AMBANG_BAHAYA_DASARIAN_MM, AMBANG_WASPADA_DASARIAN_MM,
+                         Assessment)
 
 # ─────────────────────────────────────────
 #  PERSISTENT TIMESTAMP (tahan reboot)
@@ -81,6 +83,24 @@ def fetch_bmkg(adm4):
 #  PENILAIAN RISIKO (aturan ambang; lihat risk_engine.py)
 # ─────────────────────────────────────────
 def run_model(df):
+    """Bila secrets berisi SIMULASI_TOTAL_MM, hujan prakiraan diganti nilai uji (untuk menguji notifikasi). Hapus setelah uji."""
+    sim_i = st.session_state.get("sim_intensitas")      # dari Panel Uji, hanya berlaku di sesi ini
+    if sim_i is not None:
+        df = df.copy()
+        df["rain"] = float(sim_i) * 3.0 / 24.0           # mm per langkah 3-jaman agar intensitas = sim_i mm/hari
+        hasil = assess_forecast(df["rain"].tolist())
+        hasil.simulasi = True
+        return hasil, df
+    try:
+        sim = st.secrets.get("SIMULASI_TOTAL_MM", None)
+    except Exception:
+        sim = None
+    if sim is not None:
+        df = df.copy()
+        df["rain"] = float(sim) / len(df)
+        hasil = assess_forecast(df["rain"].tolist())
+        hasil.simulasi = True
+        return hasil, df
     return assess_forecast(df['rain'].tolist()), df
 
 # ─────────────────────────────────────────
@@ -188,7 +208,7 @@ def do_predict(kec):
     df   = fetch_bmkg(adm4)
     hasil, df = run_model(df)
 
-    check_and_send_notification(hasil)
+    st.session_state.notif_terakhir = check_and_send_notification(hasil)
     ts = time.time()
     st.session_state.hasil       = hasil
     st.session_state.df_bmkg     = df
@@ -201,13 +221,16 @@ def do_predict(kec):
 def check_and_send_notification(hasil):
     """Kirim notifikasi hanya saat status NAIK. Status terakhir disimpan di file agar tahan restart dan antar-sesi."""
     kirim, status_baru = next_state(load_state(NOTIF_STATE_FILE), hasil.status)
+    sukses = False
     if kirim:
         judul, isi = build_message(hasil)
-        if send_notification(judul, isi):
+        sukses = send_notification(judul, isi)
+        if sukses:
             save_state(NOTIF_STATE_FILE, status_baru)
             st.session_state.last_notification = status_baru
     else:
         save_state(NOTIF_STATE_FILE, status_baru)
+    return kirim, sukses
 
 # ─────────────────────────────────────────
 #  UI HELPERS
@@ -234,7 +257,8 @@ def render_header():
 
 def render_status_card(hasil):
     label, color, icon = status_info(hasil)
-    now = datetime.fromtimestamp(st.session_state.last_update).strftime("%d %b %Y, %H:%M") \
+    sim_note = '<br><b style="color:#f59e0b;">MODE SIMULASI: data hujan diganti nilai uji.</b>' if getattr(hasil, 'simulasi', False) else ''
+    now = datetime.fromtimestamp(st.session_state.last_update, ZoneInfo("Asia/Jakarta")).strftime("%d %b %Y, %H:%M") \
           if st.session_state.last_update else "—"
     st.markdown(f"""
     <div style="background:linear-gradient(135deg,#111827,#1a2235);
@@ -268,7 +292,7 @@ def render_status_card(hasil):
             </div>
         </div>
         <div style="font-size:.73rem;color:#64748b;">
-            🕐 Diperbarui: {now} &nbsp;·&nbsp; Auto-refresh setiap 60 menit<br>Prototipe penelitian, belum divalidasi untuk penggunaan operasional. Bukan peringatan resmi BMKG/BPBD.</div>
+            🕐 Diperbarui: {now} &nbsp;·&nbsp; Auto-refresh setiap 60 menit{sim_note}<br>Prototipe penelitian, belum divalidasi untuk penggunaan operasional. Bukan peringatan resmi BMKG/BPBD.</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -423,6 +447,96 @@ def page_replay():
     st.dataframe(tab.round(2), width='stretch', hide_index=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
+# ─────────────────────────────────────────
+#  PANEL UJI (admin) - hanya muncul bila secrets berisi ADMIN_PASSWORD
+# ─────────────────────────────────────────
+SEGMEN_PRODUKSI = {"All", "Subscribed Users", "Total Subscriptions", "Active Users", "Engaged Users"}
+SKENARIO = {
+    "Tidak ada (pakai data BMKG asli)": None,
+    "AMAN (3 mm/hari)": 3.0,
+    "WASPADA (12 mm/hari)": 12.0,
+    "BAHAYA (18 mm/hari)": 18.0,
+}
+CONTOH_NOTIF = {
+    "WASPADA": Assessment("WASPADA", 1, 36.0, 72, 12.0, 24, True),
+    "BAHAYA":  Assessment("BAHAYA", 2, 54.0, 72, 18.0, 24, True),
+}
+
+def admin_aktif():
+    try:
+        return bool(st.secrets.get("ADMIN_PASSWORD", ""))
+    except Exception:
+        return False
+
+def _catat(aksi, status, notif):
+    log = st.session_state.setdefault("log_uji", [])
+    log.append({"Waktu (WIB)": datetime.now(ZoneInfo("Asia/Jakarta")).strftime("%H:%M:%S"),
+                "Aksi": aksi, "Status": status, "Notifikasi": notif})
+
+def _ket_notif(kirim, sukses):
+    if not kirim:
+        return "Tidak dikirim (status tidak naik)"
+    return "Terkirim" if sukses else "GAGAL dikirim"
+
+def page_panel_uji():
+    st.markdown('<div style="padding:1.5rem 2rem;">', unsafe_allow_html=True)
+    st.markdown("### 🔧 Panel Uji (admin)")
+    st.caption("Untuk Black Box Testing notifikasi. Semua notifikasi dari panel ini berlabel [SIMULASI UJI] dan dikirim ke segmen OneSignal yang diatur di secrets. "
+               "Hapus ADMIN_PASSWORD dari secrets setelah pengujian selesai, tab ini otomatis hilang.")
+    sandi = st.secrets.get("ADMIN_PASSWORD", "")
+    masuk = st.text_input("Kata sandi admin", type="password", key="adm_pw")
+    if masuk != sandi:
+        if masuk:
+            st.error("Kata sandi salah.")
+        st.markdown('</div>', unsafe_allow_html=True)
+        return
+    boleh_kirim = SEGMENT not in SEGMEN_PRODUKSI
+    st.markdown(f"Segmen OneSignal aktif: **{SEGMENT}**")
+    if not boleh_kirim:
+        st.error("Segmen ini mencakup pengguna sungguhan. Ganti ONESIGNAL_SEGMENT di secrets ke segmen uji (mis. Test Users) "
+                 "supaya tombol kirim aktif.")
+    if st.session_state.get("sim_intensitas") is not None:
+        st.warning("Simulasi sedang aktif di sesi ini. Pilih 'Tidak ada (pakai data BMKG asli)' lalu jalankan untuk mematikannya.")
+    st.markdown(f"Status notifikasi tersimpan: **{load_state(NOTIF_STATE_FILE) or '(kosong)'}**")
+
+    st.markdown("**A. Alur penuh** (data BMKG asli, hujan diganti nilai uji, lalu logika naik-status dan kirim notifikasi)")
+    pilih = st.radio("Skenario simulasi hujan", list(SKENARIO.keys()), key="adm_skenario")
+    c1, c2 = st.columns(2)
+    jalan = c1.button("▶ Jalankan skenario", key="btn_jalankan",
+                      disabled=(SKENARIO[pilih] is not None and not boleh_kirim))
+    reset = c2.button("♻️ Reset status notifikasi", key="btn_reset")
+    st.markdown("**B. Kirim langsung** (menguji saluran dan isi pesan, tanpa logika naik-status)")
+    d1, d2 = st.columns(2)
+    kirim_w = d1.button("Kirim contoh WASPADA", key="btn_kirim_waspada", disabled=not boleh_kirim)
+    kirim_b = d2.button("Kirim contoh BAHAYA", key="btn_kirim_bahaya", disabled=not boleh_kirim)
+
+    if reset:
+        save_state(NOTIF_STATE_FILE, None)
+        st.session_state.last_notification = None
+        _catat("Reset status notifikasi", "-", "Status tersimpan dikosongkan")
+    for level, tekan in (("WASPADA", kirim_w), ("BAHAYA", kirim_b)):
+        if tekan:
+            judul, isi = build_message(CONTOH_NOTIF[level])
+            ok = send_notification(judul, isi)
+            _catat(f"Kirim langsung: {level}", level, "Terkirim" if ok else "GAGAL dikirim")
+    if jalan:
+        st.session_state.sim_intensitas = SKENARIO[pilih]
+        try:
+            do_predict("Sutojayan")
+            kirim, sukses = st.session_state.get("notif_terakhir", (False, False))
+            _catat(f"Skenario: {pilih}", st.session_state.hasil.status, _ket_notif(kirim, sukses))
+        except Exception as e:
+            _catat(f"Skenario: {pilih}", "-", f"Galat: {e}")
+        st.rerun()
+
+    st.markdown("**Catatan uji sesi ini** (tangkap layar tabel ini sebagai bukti)")
+    log = st.session_state.get("log_uji", [])
+    if log:
+        st.dataframe(pd.DataFrame(log), width="stretch", hide_index=True)
+    else:
+        st.caption("Belum ada pengujian.")
+    st.markdown('</div>', unsafe_allow_html=True)
+
 def card(html):
     st.markdown(html, unsafe_allow_html=True)
 
@@ -535,17 +649,19 @@ render_header()
 # max 99999 supaya tidak berhenti, interval=1000ms
 st_autorefresh(interval=1000, limit=99999, key="countdown_refresh")
 
-tab_beranda, tab_info, tab_replay, tab_tentang = st.tabs([
-    "🏠  Beranda",
-    "📊  Informasi & Statistik",
-    "🕰️  Uji Ulang Historis",
-    "ℹ️  Tentang Kami"
-])
+_nama_tab = ["🏠  Beranda", "📊  Informasi & Statistik", "🕰️  Uji Ulang Historis", "ℹ️  Tentang Kami"]
+if admin_aktif():
+    _nama_tab.append("🔧  Panel Uji")
+_tabs = st.tabs(_nama_tab)
+tab_beranda, tab_info, tab_replay, tab_tentang = _tabs[:4]
 
 with tab_beranda:  page_beranda()
 with tab_info:     page_informasi()
 with tab_replay:   page_replay()
 with tab_tentang:  page_tentang()
+if admin_aktif():
+    with _tabs[4]:
+        page_panel_uji()
 
 # ── Trigger prediksi otomatis tiap 60 menit berdasarkan server time ──
 # Dibaca dari file (persisten), bukan session state
